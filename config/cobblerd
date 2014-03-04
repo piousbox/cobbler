@@ -44,7 +44,7 @@ fi
 SERVICE=cobblerd
 PROCESS=cobblerd
 CONFIG_ARGS=" "
-if [ -f $DEBIAN_VERSION ]; then
+if [ -f $DEBIAN_VERSION -o -f $SUSE_RELEASE ]; then
     LOCKFILE=/var/lock/$SERVICE
 else
     LOCKFILE=/var/lock/subsys/$SERVICE
@@ -56,7 +56,7 @@ RETVAL=0
 start() {
     echo -n "Starting cobbler daemon: "
     if [ -f $SUSE_RELEASE ]; then
-        startproc -f -p /var/run/$SERVICE.pid @@install_scripts@@/cobblerd $CONFIG_ARGS
+        startproc -p /var/run/$SERVICE.pid @@install_scripts@@/cobblerd $CONFIG_ARGS
         rc_status -v
     elif [ -e $DEBIAN_VERSION ]; then
         if [ -f $LOCKFILE ]; then

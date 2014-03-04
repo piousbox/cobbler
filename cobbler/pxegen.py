@@ -32,6 +32,7 @@ import traceback
 import errno
 import string
 import socket
+import re
 
 import utils
 from cexceptions import *
@@ -282,7 +283,7 @@ class PXEGen:
             else:
                 continue 
 
-            if system.is_management_supported() and system.netboot_enabled:
+            if system.is_management_supported():
                 if not image_based:
                     self.write_pxe_file(f2, system, profile, distro, working_arch, metadata=pxe_metadata)
                     if grub_path:
@@ -539,7 +540,12 @@ class PXEGen:
         # choose a template
         if system:
             if format == "grub":
-                template = os.path.join(self.settings.pxe_template_dir, "grubsystem.template")
+                if system.netboot_enabled:
+                    template = os.path.join(self.settings.pxe_template_dir, "grubsystem.template")
+                else:
+                    local = os.path.join(self.settings.pxe_template_dir, "grublocal.template")
+                    if os.path.exists(local):
+                        template = local
             else: # pxe
                 if system.netboot_enabled:
                     template = os.path.join(self.settings.pxe_template_dir,"pxesystem.template")
@@ -780,10 +786,9 @@ class PXEGen:
             append_line = "%s fixrtc vram=48M omapfb.vram=0:24M" % append_line
 
         # do variable substitution on the append line
-        # FIXME: should we just promote all of the ksmeta 
-        #        variables instead of just the tree?
-        if blended.has_key("ks_meta") and blended["ks_meta"].has_key("tree"):
-            blended["tree"] = blended["ks_meta"]["tree"]
+        # promote all of the ksmeta variables
+        if blended.has_key("ks_meta"):
+            blended.update(blended["ks_meta"])
         append_line = self.templar.render(append_line,utils.flatten(blended),None)
 
         # FIXME - the append_line length limit is architecture specific
@@ -814,6 +819,13 @@ class PXEGen:
            return results
 
         blended = utils.blender(self.api, False, obj)
+        
+        if obj.COLLECTION_TYPE == "distro":
+            if obj.os_version.startswith("esxi5"):
+                realbootcfg = open(os.path.join(os.path.dirname(obj.kernel),'boot.cfg')).read()
+                bootmodules = re.findall(r'modules=(.*)',realbootcfg)
+                for modules in bootmodules:
+                    blended['esx_modules'] = modules.replace('/','')
 
         ksmeta = blended.get("ks_meta",{})
         try:
@@ -867,7 +879,7 @@ class PXEGen:
                 if dest_dir.find(utils.tftpboot_location()) != 0:
                    raise CX(" warning: template destination (%s) is outside %s, skipping." % (dest_dir,utils.tftpboot_location()))
                    continue
-            else:
+            elif write_file:
                 dest_dir = os.path.join(self.settings.webdir, "rendered", dest_dir)
                 dest = os.path.join(dest_dir, os.path.basename(dest))
                 if not os.path.exists(dest_dir):
